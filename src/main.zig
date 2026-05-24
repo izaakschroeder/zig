@@ -395,6 +395,12 @@ fn mainArgs(
         });
     } else if (mem.eql(u8, cmd, "init")) {
         return cmdInit(gpa, arena, io, cmd_args);
+    } else if (mem.eql(u8, cmd, "install")) {
+        return jitCmd(gpa, arena, io, cmd_args, environ_map, .{
+            .cmd_name = "install",
+            .root_src_path = "install.zig",
+            .prepend_zig_exe_path = true,
+        });
     } else if (mem.eql(u8, cmd, "targets")) {
         dev.check(.targets_command);
         const host = std.zig.resolveTargetQueryOrFatal(io, .{});
