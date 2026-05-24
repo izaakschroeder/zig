@@ -238,9 +238,40 @@ fn mainArgs(
     gpa: Allocator,
     arena: Allocator,
     io: Io,
-    args: []const [:0]const u8,
+    all_args: []const [:0]const u8,
     environ_map: *process.Environ.Map,
 ) !void {
+    const MULTI_CALL_COMMANDS = .{
+        "ar",
+        "cc",
+        "c++",
+        "dlltool",
+        "lib",
+        "objcopy",
+        "objdump",
+        "ranlib",
+        "rc",
+    };
+
+    const args = if (all_args.len > 0) blk: {
+        const basename = if (mem.lastIndexOfScalar(u8, all_args[0], '/')) |idx|
+            all_args[0][idx + 1 ..]
+        else
+            all_args[0];
+        inline for (MULTI_CALL_COMMANDS) |cmd| {
+            if (mem.eql(u8, basename, @as([]const u8, cmd))) {
+                var new_args = try arena.alloc([:0]const u8, all_args.len + 1);
+                new_args[0] = "zig";
+                new_args[1] = @as([:0]const u8, cmd);
+                for (all_args[1..], 2..) |arg, i| {
+                    new_args[i] = arg;
+                }
+                break :blk new_args;
+            }
+        }
+        break :blk all_args;
+    } else all_args;
+
     if (process.can_replace and EnvVar.ZIG_IS_DETECTING_LIBC_PATHS.isSet(environ_map)) {
         dev.check(.cc_command);
         // In this case we have accidentally invoked ourselves as "the system C compiler"

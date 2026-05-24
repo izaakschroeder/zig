@@ -2440,6 +2440,26 @@ pub fn addCliTests(b: *std.Build) *Step {
         step.dependOn(&run_test.step);
     }
 
+    {
+        // Test multi-call binary behavior via symlinks.
+        const tmp_path = b.tmpPath();
+
+        for (&[_][]const u8{ "ar", "cc" }) |cmd| {
+            const create_symlink = b.addSystemCommand(&.{ "/bin/ln", "-s", b.graph.zig_exe, cmd });
+            create_symlink.setCwd(tmp_path);
+            create_symlink.setName(b.fmt("create {s} symlink for multi-call test", .{cmd}));
+            create_symlink.expectExitCode(0);
+
+            const run_via_symlink = b.addSystemCommand(&.{ b.fmt(".{s}{s}", .{ s, cmd }), "--help" });
+            run_via_symlink.setCwd(tmp_path);
+            run_via_symlink.setName(b.fmt("invoke {s} symlink --help", .{cmd}));
+            run_via_symlink.expectExitCode(0);
+            run_via_symlink.step.dependOn(&create_symlink.step);
+
+            step.dependOn(&run_via_symlink.step);
+        }
+    }
+
     return step;
 }
 
