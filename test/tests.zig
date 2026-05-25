@@ -2460,6 +2460,62 @@ pub fn addCliTests(b: *std.Build) *Step {
         }
     }
 
+    {
+        // Test `zig cc -S -Wp,-MD,<depfile> -o <output>` with a C source file.
+        // Previously, the -S flag combined with -Wp,-MD caused the assembly output
+        // to be written to /dev/null (or fail entirely with -Werror) because the
+        // execve path set out_obj_path = "/dev/null" when bin_file was null.
+        const test_c =
+            \\int add(int a, int b) {
+            \\  return a + b;
+            \\}
+        ;
+
+        {
+            const tmp = b.addTempFiles();
+            const tmp_path = tmp.getDirectory();
+            _ = tmp.add("test.c", test_c);
+
+            const zig_cc = b.addSystemCommand(&.{
+                b.graph.zig_exe, "cc", "-S", "-Wp,-MD,add.d", "-o", "add.s",
+            });
+            zig_cc.addFileArg(tmp_path.path(b, "test.c"));
+            zig_cc.setCwd(tmp_path);
+            zig_cc.has_side_effects = true;
+            zig_cc.setName("zig cc -S -Wp,-MD,add.d -o add.s");
+            zig_cc.expectExitCode(0);
+
+            const check_asm = b.addCheckFile(tmp_path.path(b, "add.s"), .{
+                .expected_matches = &.{":"},
+            });
+            check_asm.setName("check zig cc -S -Wp,-MD produces valid asm");
+            check_asm.step.dependOn(&zig_cc.step);
+            step.dependOn(&check_asm.step);
+        }
+
+        {
+            const tmp = b.addTempFiles();
+            const tmp_path = tmp.getDirectory();
+            _ = tmp.add("test.c", test_c);
+
+            const zig_cc = b.addSystemCommand(&.{
+                b.graph.zig_exe, "cc", "-S", "-Werror", "-Wp,-MD,add.d", "-o", "add.s",
+            });
+            zig_cc.addFileArg(tmp_path.path(b, "test.c"));
+            zig_cc.setCwd(tmp_path);
+            zig_cc.has_side_effects = true;
+            zig_cc.setName("zig cc -S -Werror -Wp,-MD,add.d -o add.s");
+            zig_cc.expectExitCode(0);
+
+            const check_asm = b.addCheckFile(tmp_path.path(b, "add.s"), .{
+                .expected_matches = &.{":"},
+            });
+            check_asm.setName("check zig cc -S -Werror -Wp,-MD produces valid asm");
+            check_asm.step.dependOn(&zig_cc.step);
+            step.dependOn(&check_asm.step);
+        }
+    }
+
     return step;
 }
 
