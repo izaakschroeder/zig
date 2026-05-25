@@ -168,7 +168,7 @@ pub fn create(arena: Allocator, options: CreateOptions) !*Package.Module {
     };
 
     const pic = b: {
-        if (target_util.requiresPic(target, options.global.link_libc)) {
+        if (target_util.requiresPic(target)) {
             if (options.inherited.pic == false)
                 return error.TargetRequiresPic;
             break :b true;
