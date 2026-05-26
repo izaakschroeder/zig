@@ -9,6 +9,6 @@ mkdir -p "$ROOT/zig-out/zig"
 
 podman build \
     --volume "$ROOT/.zig-cache:/tmp/.zig-cache:rw" \
-    -f "$CWD/Containerfile.zig" \
-    -t zig \
+    -f "$CWD/Containerfile.kernel" \
+    -t kernel \
     "$ROOT"

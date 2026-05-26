@@ -1,0 +1,22 @@
+FROM alpine:latest as build
+
+RUN apk add curl tar xz make
+
+RUN mkdir -p /src/linux
+RUN curl -fLo- "https://git.kernel.org/torvalds/t/linux-7.1-rc5.tar.gz" \
+    | tar --strip-components=1 -xzf- -C /src/linux
+
+ENV ZIG_GLOBAL_CACHE_DIR=/tmp/.zig-cache
+ENV ZIG_LOCAL_CACHE_DIR=/tmp/.zig-cache
+
+COPY --from=zig /opt/zig /opt/zig
+RUN ln -s /opt/zig/bin/zig /usr/bin/zig
+
+RUN zig install --tools=all --prefix=/usr
+
+RUN ln -s /usr/bin/cc /usr/bin/clang
+RUN ln -s /usr/bin/c++ /usr/bin/clang++
+
+WORKDIR /src/linux
+RUN make LLVM=1 defconfig
+RUN make LLVM=1
