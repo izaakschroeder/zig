@@ -683,6 +683,7 @@ fn create(
             .emit = path,
 
             .file = file,
+            .fatal_warnings = null,
             .gc_sections = false,
             .print_gc_sections = false,
             .build_id = .none,

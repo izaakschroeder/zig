@@ -2963,6 +2963,7 @@ pub fn createEmpty(
             // majority of cases, and therefore express "no garbage collection"
             // in terms of setting the no_strip and must_link flags on all
             // symbols.
+            .fatal_warnings = options.fatal_warnings,
             .gc_sections = options.gc_sections orelse (output_mode != .Obj),
             .print_gc_sections = options.print_gc_sections,
             .stack_size = options.stack_size orelse switch (target.os.tag) {

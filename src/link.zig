@@ -402,6 +402,7 @@ pub const File = struct {
     /// To convert this to an actual path, see `Compilation.resolveEmitPath` (with `kind == .temp`).
     zcu_object_basename: ?[]const u8 = null,
     gc_sections: bool,
+    fatal_warnings: ?bool,
     print_gc_sections: bool,
     build_id: std.zig.BuildId,
     allow_shlib_undefined: bool,
@@ -452,6 +453,7 @@ pub const File = struct {
         major_subsystem_version: ?u16,
         minor_subsystem_version: ?u16,
         gc_sections: ?bool,
+        fatal_warnings: ?bool,
         repro: bool,
         allow_shlib_undefined: ?bool,
         allow_undefined_version: bool,

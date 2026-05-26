@@ -231,6 +231,7 @@ pub fn createEmpty(
             .comp = comp,
             .emit = emit,
             .zcu_object_basename = try allocPrint(arena, "{s}_zcu.{s}", .{ fs.path.stem(emit.sub_path), obj_file_ext }),
+            .fatal_warnings = options.fatal_warnings,
             .gc_sections = gc_sections,
             .print_gc_sections = options.print_gc_sections,
             .stack_size = stack_size,
@@ -922,6 +923,14 @@ fn elfLink(lld: *Lld, arena: Allocator) !void {
             try argv.append(arg);
         }
 
+        if (base.fatal_warnings) |fatal| {
+            if (fatal) {
+                try argv.append("--fatal-warnings");
+            } else {
+                try argv.append("--no-fatal-warnings");
+            }
+        }
+
         if (base.gc_sections) {
             try argv.append("--gc-sections");
         }
@@ -1442,6 +1451,14 @@ fn wasmLink(lld: *Lld, arena: Allocator) !void {
         if (wasm.export_table) {
             assert(!wasm.import_table);
             try argv.append("--export-table");
+        }
+
+        if (base.fatal_warnings) |fatal| {
+            if (fatal) {
+                try argv.append("--fatal-warnings");
+            } else {
+                try argv.append("--no-fatal-warnings");
+            }
         }
 
         // For wasm-ld we only need to specify '--no-gc-sections' when the user explicitly

@@ -185,6 +185,7 @@ pub fn createEmpty(
                 try std.fmt.allocPrint(arena, "{s}_zcu.o", .{fs.path.stem(emit.sub_path)})
             else
                 null,
+            .fatal_warnings = options.fatal_warnings,
             .gc_sections = options.gc_sections orelse (optimize_mode != .Debug),
             .print_gc_sections = options.print_gc_sections,
             .stack_size = options.stack_size orelse 16777216,

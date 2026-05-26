@@ -927,6 +927,7 @@ fn buildOutputType(
     var linker_initial_memory: ?u64 = null;
     var linker_max_memory: ?u64 = null;
     var linker_global_base: ?u64 = null;
+    var linker_fatal_warnings: ?bool = null;
     var linker_print_gc_sections: bool = false;
     var linker_print_icf_sections: bool = false;
     var linker_print_map: bool = false;
@@ -1742,6 +1743,10 @@ fn buildOutputType(
                         linker_gc_sections = true;
                     } else if (mem.eql(u8, arg, "--no-gc-sections")) {
                         linker_gc_sections = false;
+                    } else if (mem.eql(u8, arg, "--fatal-warnings")) {
+                        linker_fatal_warnings = true;
+                    } else if (mem.eql(u8, arg, "--no-fatal-warnings")) {
+                        linker_fatal_warnings = false;
                     } else if (mem.eql(u8, arg, "--build-id")) {
                         build_id = .fast;
                     } else if (mem.cutPrefix(u8, arg, "--build-id=")) |style| {
@@ -1833,6 +1838,17 @@ fn buildOutputType(
                         create_module.opts.wasi_exec_model = parseWasiExecModel(rest);
                     } else if (mem.eql(u8, arg, "-municode")) {
                         mingw_unicode_entry_point = true;
+                    } else if (mem.cutPrefix(u8, arg, "-Wl,")) |rest| {
+                        var split_it = mem.splitScalar(u8, rest, ',');
+                        while (split_it.next()) |linker_arg| {
+                            if (mem.eql(u8, linker_arg, "--fatal-warnings")) {
+                                linker_fatal_warnings = true;
+                            } else if (mem.eql(u8, linker_arg, "--no-fatal-warnings")) {
+                                linker_fatal_warnings = false;
+                            } else {
+                                fatal("unsupported linker arg in -Wl: {s}", .{linker_arg});
+                            }
+                        }
                     } else {
                         fatal("unrecognized parameter: '{s}'", .{arg});
                     }
@@ -2637,6 +2653,10 @@ fn buildOutputType(
                     force_load_objc = true;
                 } else if (mem.eql(u8, arg, "--no-undefined")) {
                     linker_z_defs = true;
+                } else if (mem.eql(u8, arg, "--fatal-warnings")) {
+                    linker_fatal_warnings = true;
+                } else if (mem.eql(u8, arg, "--no-fatal-warnings")) {
+                    linker_fatal_warnings = false;
                 } else if (mem.eql(u8, arg, "--gc-sections")) {
                     linker_gc_sections = true;
                 } else if (mem.eql(u8, arg, "--no-gc-sections")) {
@@ -3624,6 +3644,7 @@ fn buildOutputType(
         .disable_c_depfile = disable_c_depfile,
         .soname = resolved_soname,
         .linker_sort_section = linker_sort_section,
+        .linker_fatal_warnings = linker_fatal_warnings,
         .linker_gc_sections = linker_gc_sections,
         .linker_repro = linker_repro,
         .linker_allow_shlib_undefined = linker_allow_shlib_undefined,

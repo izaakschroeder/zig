@@ -1632,6 +1632,7 @@ pub const CreateOptions = struct {
     linker_allow_undefined_version: bool = false,
     linker_enable_new_dtags: ?bool = null,
     soname: ?[]const u8 = null,
+    linker_fatal_warnings: ?bool = null,
     linker_gc_sections: ?bool = null,
     linker_repro: ?bool = null,
     linker_allow_shlib_undefined: ?bool = null,
@@ -2360,6 +2361,7 @@ pub fn create(gpa: Allocator, arena: Allocator, io: Io, diag: *CreateDiagnostic,
             .allow_undefined_version = options.linker_allow_undefined_version,
             .enable_new_dtags = options.linker_enable_new_dtags,
             .gc_sections = options.linker_gc_sections,
+            .fatal_warnings = options.linker_fatal_warnings,
             .emit_relocs = options.link_emit_relocs,
             .soname = options.soname,
             .compatibility_version = options.compatibility_version,
@@ -3518,6 +3520,7 @@ fn addNonIncrementalStuffToCacheManifest(
     man.hash.addOptional(opts.stack_size);
     man.hash.addOptional(opts.image_base);
     man.hash.addOptional(opts.gc_sections);
+    man.hash.addOptional(opts.fatal_warnings);
     man.hash.add(opts.emit_relocs);
     const target = &comp.root_mod.resolved_target.result;
     if (target.ofmt == .macho or target.ofmt == .coff) {

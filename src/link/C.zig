@@ -429,6 +429,7 @@ pub fn createEmpty(
             .tag = .c,
             .comp = comp,
             .emit = emit,
+            .fatal_warnings = options.fatal_warnings,
             .gc_sections = options.gc_sections orelse (optimize_mode != .Debug and output_mode != .Obj),
             .print_gc_sections = options.print_gc_sections,
             .stack_size = options.stack_size orelse 16777216,

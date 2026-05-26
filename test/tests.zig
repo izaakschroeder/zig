@@ -2516,6 +2516,72 @@ pub fn addCliTests(b: *std.Build) *Step {
         }
     }
 
+    {
+        // Test -Wl,--fatal-warnings and -Wl,--no-fatal-warnings with zig build-exe and zig cc.
+        const zig_src =
+            \\pub fn main() void {}
+        ;
+        const c_src =
+            \\int main() { return 0; }
+        ;
+
+        const zig_tmp = b.addTempFiles();
+        _ = zig_tmp.add("test.zig", zig_src);
+        const zig_tmp_path = zig_tmp.getDirectory();
+
+        const c_tmp = b.addTempFiles();
+        _ = c_tmp.add("test.c", c_src);
+        const c_tmp_path = c_tmp.getDirectory();
+
+        {
+            const run = b.addSystemCommand(&.{
+                b.graph.zig_exe, "build-exe", "-target", "x86_64-linux-gnu", "-Wl,--fatal-warnings", "-femit-bin=out",
+            });
+            run.addFileArg(zig_tmp_path.path(b, "test.zig"));
+            run.setCwd(zig_tmp_path);
+            run.has_side_effects = true;
+            run.setName("zig build-exe -target x86_64-linux-gnu -Wl,--fatal-warnings");
+            run.expectExitCode(0);
+            step.dependOn(&run.step);
+        }
+
+        {
+            const run = b.addSystemCommand(&.{
+                b.graph.zig_exe, "build-exe", "-target", "x86_64-linux-gnu", "-Wl,--no-fatal-warnings", "-femit-bin=out",
+            });
+            run.addFileArg(zig_tmp_path.path(b, "test.zig"));
+            run.setCwd(zig_tmp_path);
+            run.has_side_effects = true;
+            run.setName("zig build-exe -target x86_64-linux-gnu -Wl,--no-fatal-warnings");
+            run.expectExitCode(0);
+            step.dependOn(&run.step);
+        }
+
+        {
+            const run = b.addSystemCommand(&.{
+                b.graph.zig_exe, "cc", "--target=x86_64-linux-gnu", "-Wl,--fatal-warnings", "-o", "out",
+            });
+            run.addFileArg(c_tmp_path.path(b, "test.c"));
+            run.setCwd(c_tmp_path);
+            run.has_side_effects = true;
+            run.setName("zig cc --target=x86_64-linux-gnu -Wl,--fatal-warnings");
+            run.expectExitCode(0);
+            step.dependOn(&run.step);
+        }
+
+        {
+            const run = b.addSystemCommand(&.{
+                b.graph.zig_exe, "cc", "--target=x86_64-linux-gnu", "-Wl,--no-fatal-warnings", "-o", "out",
+            });
+            run.addFileArg(c_tmp_path.path(b, "test.c"));
+            run.setCwd(c_tmp_path);
+            run.has_side_effects = true;
+            run.setName("zig cc --target=x86_64-linux-gnu -Wl,--no-fatal-warnings");
+            run.expectExitCode(0);
+            step.dependOn(&run.step);
+        }
+    }
+
     return step;
 }
 

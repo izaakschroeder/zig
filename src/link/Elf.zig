@@ -264,6 +264,7 @@ pub fn createEmpty(
                 try std.fmt.allocPrint(arena, "{s}_zcu.o", .{fs.path.stem(emit.sub_path)})
             else
                 null,
+            .fatal_warnings = options.fatal_warnings,
             .gc_sections = options.gc_sections orelse (optimize_mode != .Debug and output_mode != .Obj),
             .print_gc_sections = options.print_gc_sections,
             .stack_size = options.stack_size orelse 16777216,
@@ -992,6 +993,14 @@ fn dumpArgvInit(self: *Elf, arena: Allocator) !void {
         });
 
         try argv.append(gpa, try std.fmt.allocPrint(arena, "--image-base={d}", .{self.image_base}));
+
+        if (self.base.fatal_warnings) |fatal| {
+            if (fatal) {
+                try argv.append(gpa, "--fatal-warnings");
+            } else {
+                try argv.append(gpa, "--no-fatal-warnings");
+            }
+        }
 
         if (self.base.gc_sections) {
             try argv.append(gpa, "--gc-sections");
