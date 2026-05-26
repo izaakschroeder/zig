@@ -2582,6 +2582,66 @@ pub fn addCliTests(b: *std.Build) *Step {
         }
     }
 
+    {
+        // Test -Wrestrict flag compatibility.
+        // zig should silently consume -Wrestrict since clang does not support it.
+        const c_src =
+            \\int main() { return 0; }
+        ;
+
+        const c_tmp = b.addTempFiles();
+        _ = c_tmp.add("test.c", c_src);
+        const c_tmp_path = c_tmp.getDirectory();
+
+        {
+            const run = b.addSystemCommand(&.{
+                b.graph.zig_exe, "cc", "-Wrestrict", "-c", "-o", "out.o",
+            });
+            run.addFileArg(c_tmp_path.path(b, "test.c"));
+            run.setCwd(c_tmp_path);
+            run.has_side_effects = true;
+            run.setName("zig cc -Wrestrict");
+            run.expectExitCode(0);
+            step.dependOn(&run.step);
+        }
+
+        {
+            const run = b.addSystemCommand(&.{
+                b.graph.zig_exe, "cc", "-Werror", "-Wrestrict", "-c", "-o", "out.o",
+            });
+            run.addFileArg(c_tmp_path.path(b, "test.c"));
+            run.setCwd(c_tmp_path);
+            run.has_side_effects = true;
+            run.setName("zig cc -Werror -Wrestrict");
+            run.expectExitCode(0);
+            step.dependOn(&run.step);
+        }
+
+        {
+            const run = b.addSystemCommand(&.{
+                b.graph.zig_exe, "cc", "-Wno-restrict", "-c", "-o", "out.o",
+            });
+            run.addFileArg(c_tmp_path.path(b, "test.c"));
+            run.setCwd(c_tmp_path);
+            run.has_side_effects = true;
+            run.setName("zig cc -Wno-restrict");
+            run.expectExitCode(0);
+            step.dependOn(&run.step);
+        }
+
+        {
+            const run = b.addSystemCommand(&.{
+                b.graph.zig_exe, "cc", "-Werror", "-Wno-restrict", "-c", "-o", "out.o",
+            });
+            run.addFileArg(c_tmp_path.path(b, "test.c"));
+            run.setCwd(c_tmp_path);
+            run.has_side_effects = true;
+            run.setName("zig cc -Werror -Wno-restrict");
+            run.expectExitCode(0);
+            step.dependOn(&run.step);
+        }
+    }
+
     return step;
 }
 
