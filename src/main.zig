@@ -100,6 +100,7 @@ const normal_usage =
     \\  c++              Use Zig as a drop-in C++ compiler
     \\  dlltool          Use Zig as a drop-in dlltool.exe
     \\  lib              Use Zig as a drop-in lib.exe
+    \\  ld               Link objects and archives into a binary
     \\  objcopy          Manipulate executables and relocatables
     \\  objdump          Print information about executables and relocatables
     \\  ranlib           Use Zig as a drop-in ranlib
@@ -181,6 +182,21 @@ const RootAllocator = if (use_debug_allocator) std.heap.DebugAllocator(.{
     }
 };
 
+const MULTI_CALL_COMMANDS = .{
+    "ar",
+    "cc",
+    "c++",
+    "clang",
+    "clang++",
+    "dlltool",
+    "lib",
+    "ld",
+    "objcopy",
+    "objdump",
+    "ranlib",
+    "rc",
+};
+
 pub fn main(init: std.process.Init.Minimal) anyerror!void {
     var root_allocator: RootAllocator = .init;
     defer _ = root_allocator.deinit();
@@ -211,9 +227,31 @@ pub fn main(init: std.process.Init.Minimal) anyerror!void {
     defer arena_instance.deinit();
     const arena = arena_instance.allocator();
 
-    const args = try init.args.toSlice(arena);
+    const os_args = try init.args.toSlice(arena);
 
-    if (args.len > 0) crash_report.zig_argv0 = args[0];
+    if (os_args.len > 0) crash_report.zig_argv0 = os_args[0];
+
+    // Apply multi-call rewrite before the length check so that
+    // symlinks like `clang` with no args work correctly.
+    const args = blk: {
+        if (os_args.len == 0) break :blk os_args;
+        const basename = if (mem.lastIndexOfScalar(u8, os_args[0], '/')) |idx|
+            os_args[0][idx + 1 ..]
+        else
+            os_args[0];
+        inline for (MULTI_CALL_COMMANDS) |cmd| {
+            if (mem.eql(u8, basename, @as([]const u8, cmd))) {
+                var new_args = try arena.alloc([:0]const u8, os_args.len + 1);
+                new_args[0] = "zig";
+                new_args[1] = @as([:0]const u8, cmd);
+                for (os_args[1..], 2..) |arg, i| {
+                    new_args[i] = arg;
+                }
+                break :blk new_args;
+            }
+        }
+        break :blk os_args;
+    };
 
     if (args.len <= 1) {
         std.log.info("{s}", .{usage});
@@ -241,18 +279,6 @@ fn mainArgs(
     all_args: []const [:0]const u8,
     environ_map: *process.Environ.Map,
 ) !void {
-    const MULTI_CALL_COMMANDS = .{
-        "ar",
-        "cc",
-        "c++",
-        "dlltool",
-        "lib",
-        "objcopy",
-        "objdump",
-        "ranlib",
-        "rc",
-    };
-
     const args = if (all_args.len > 0) blk: {
         const basename = if (mem.lastIndexOfScalar(u8, all_args[0], '/')) |idx|
             all_args[0][idx + 1 ..]
@@ -335,9 +361,23 @@ fn mainArgs(
     } else if (mem.eql(u8, cmd, "build")) {
         dev.check(.build_command);
         return cmdBuild(gpa, arena, io, cmd_args, environ_map);
-    } else if (mem.eql(u8, cmd, "clang") or
-        mem.eql(u8, cmd, "-cc1") or mem.eql(u8, cmd, "-cc1as"))
-    {
+    } else if (mem.eql(u8, cmd, "-cc1") or mem.eql(u8, cmd, "-cc1as")) {
+        dev.check(.clang_command);
+        return process.exit(try clangMain(arena, args));
+    } else if (mem.eql(u8, cmd, "clang") or mem.eql(u8, cmd, "clang++")) {
+        dev.check(.cc_command);
+
+        for (cmd_args) |arg| {
+            if (mem.eql(u8, arg, "-v") or mem.eql(u8, arg, "--version")) {
+                return printClangVersion(arena, io, args[0]);
+            }
+        }
+
+        if (cmd_args.len == 0) {
+            try Io.File.stderr().writeStreamingAll(io, "clang: no input files\n");
+            process.exit(1);
+        }
+
         dev.check(.clang_command);
         return process.exit(try clangMain(arena, args));
     } else if (mem.eql(u8, cmd, "ld.lld") or
@@ -371,6 +411,12 @@ fn mainArgs(
         return jitCmd(gpa, arena, io, cmd_args, environ_map, .{
             .cmd_name = "objcopy",
             .root_src_path = "objcopy.zig",
+        });
+    } else if (mem.eql(u8, cmd, "ld")) {
+        return jitCmd(gpa, arena, io, cmd_args, environ_map, .{
+            .cmd_name = "ld",
+            .root_src_path = "ld.zig",
+            .prepend_zig_exe_path = true,
         });
     } else if (mem.eql(u8, cmd, "objdump")) {
         return jitCmd(gpa, arena, io, cmd_args, environ_map, .{
@@ -6017,6 +6063,7 @@ extern fn ZigClangIsLLVMUsingSeparateLibcxx() bool;
 
 extern "c" fn ZigClang_main(argc: c_int, argv: [*:null]?[*:0]u8) c_int;
 extern "c" fn ZigLlvmAr_main(argc: c_int, argv: [*:null]?[*:0]u8) c_int;
+extern "c" fn LLVMGetVersion(Major: *c_uint, Minor: *c_uint, Patch: *c_uint) void;
 
 fn argsCopyZ(alloc: Allocator, args: []const []const u8) ![:null]?[*:0]u8 {
     var argv = try alloc.allocSentinel(?[*:0]u8, args.len, null);
@@ -6038,6 +6085,80 @@ pub fn clangMain(alloc: Allocator, args: []const []const u8) error{OutOfMemory}!
     const argv = try argsCopyZ(arena, args);
     const exit_code = ZigClang_main(@as(c_int, @intCast(argv.len)), argv.ptr);
     return @as(u8, @bitCast(@as(i8, @truncate(exit_code))));
+}
+
+fn printClangVersion(arena: Allocator, io: Io, zig_exe_path: []const u8) !void {
+    var major: c_uint = 0;
+    var minor: c_uint = 0;
+    var patch: c_uint = 0;
+    LLVMGetVersion(&major, &minor, &patch);
+
+    const target = builtin.target;
+    const llvm_arch: []const u8 = switch (target.cpu.arch) {
+        .x86_64 => "x86_64",
+        .aarch64 => "aarch64",
+        .aarch64_be => "aarch64_be",
+        .arm => "arm",
+        .armeb => "armeb",
+        .thumb => "thumb",
+        .thumbeb => "thumbeb",
+        .mips => "mips",
+        .mipsel => "mipsel",
+        .mips64 => "mips64",
+        .mips64el => "mips64el",
+        .powerpc => "powerpc",
+        .powerpcle => "powerpcle",
+        .powerpc64 => "powerpc64",
+        .powerpc64le => "powerpc64le",
+        .riscv32 => "riscv32",
+        .riscv64 => "riscv64",
+        .s390x => "s390x",
+        .wasm32 => "wasm32",
+        .wasm64 => "wasm64",
+        else => @tagName(target.cpu.arch),
+    };
+    const llvm_os: []const u8 = switch (target.os.tag) {
+        .linux => "linux",
+        .macos => "macosx",
+        .windows => "windows",
+        .freebsd => "freebsd",
+        .netbsd => "netbsd",
+        .openbsd => "openbsd",
+        .dragonfly => "dragonfly",
+        .illumos => "illumos",
+        .haiku => "haiku",
+        .plan9 => "plan9",
+        else => @tagName(target.os.tag),
+    };
+    const llvm_abi: []const u8 = switch (target.abi) {
+        .gnu => "gnu",
+        .gnuabin32 => "gnuabin32",
+        .gnuabi64 => "gnuabi64",
+        .gnueabi => "gnueabi",
+        .gnueabihf => "gnueabihf",
+        .musl => "musl",
+        .musleabi => "musleabi",
+        .musleabihf => "musleabihf",
+        .muslx32 => "muslx32",
+        .msvc => "msvc",
+        .itanium => "itanium",
+        .simulator => "simulator",
+        else => @tagName(target.abi),
+    };
+    const triple = try std.fmt.allocPrint(arena, "{s}-unknown-{s}-{s}", .{ llvm_arch, llvm_os, llvm_abi });
+    const installed_dir = blk: {
+        const exe_dir = process.executableDirPathAlloc(io, arena) catch
+            fs.path.dirname(zig_exe_path) orelse ".";
+        break :blk fs.path.dirname(exe_dir) orelse exe_dir;
+    };
+
+    const stdout = Io.File.stdout();
+    var stdout_writer = stdout.writerStreaming(io, &stdout_buffer);
+    try stdout_writer.interface.print("zig clang version {d}.{d}.{d}\n", .{ major, minor, patch });
+    try stdout_writer.interface.print("Target: {s}\n", .{triple});
+    try stdout_writer.interface.print("Thread model: posix\n", .{});
+    try stdout_writer.interface.print("InstalledDir: {s}\n", .{installed_dir});
+    try stdout_writer.interface.flush();
 }
 
 pub fn llvmArMain(alloc: Allocator, args: []const []const u8) error{OutOfMemory}!u8 {

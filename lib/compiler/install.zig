@@ -11,12 +11,16 @@ const all_tools = .{
     "ar",
     "cc",
     "c++",
+    "clang",
+    "clang++",
     "dlltool",
+    "ld",
     "lib",
     "objcopy",
     "objdump",
     "ranlib",
     "rc",
+    "zig",
 };
 
 pub fn main(init: std.process.Init) !void {

@@ -2238,6 +2238,7 @@ pub fn addCliTests(b: *std.Build) *Step {
     {
         // Test that all JIT'd commands compile.
         for (&[_][]const u8{
+            "ld",
             "libc",
             "objcopy",
             "objdump",
@@ -2637,6 +2638,138 @@ pub fn addCliTests(b: *std.Build) *Step {
             run.setCwd(c_tmp_path);
             run.has_side_effects = true;
             run.setName("zig cc -Werror -Wno-restrict");
+            run.expectExitCode(0);
+            step.dependOn(&run.step);
+        }
+    }
+
+    {
+        // Test `zig clang` and `zig clang++` command compatibility.
+        {
+            const run = b.addSystemCommand(&.{ b.graph.zig_exe, "clang" });
+            run.setName("zig clang");
+            run.expectStdErrEqual("clang: no input files\n");
+            run.expectExitCode(1);
+            step.dependOn(&run.step);
+        }
+
+        {
+            const run = b.addSystemCommand(&.{ b.graph.zig_exe, "clang++" });
+            run.setName("zig clang++");
+            run.expectStdErrEqual("clang: no input files\n");
+            run.expectExitCode(1);
+            step.dependOn(&run.step);
+        }
+
+        {
+            const run = b.addSystemCommand(&.{ b.graph.zig_exe, "clang", "--help" });
+            run.setName("zig clang --help");
+            run.expectStdErrEqual("");
+            run.expectExitCode(0);
+            step.dependOn(&run.step);
+        }
+
+        {
+            const run = b.addSystemCommand(&.{ b.graph.zig_exe, "clang", "--version" });
+            run.setName("zig clang --version");
+            run.expectStdOutMatch("zig clang version");
+            run.expectStdErrEqual("");
+            step.dependOn(&run.step);
+        }
+
+        {
+            const test_c =
+                \\int add(int a, int b) {
+                \\  return a + b;
+                \\}
+            ;
+            const tmp = b.addTempFiles();
+            const tmp_path = tmp.getDirectory();
+            _ = tmp.add("test.c", test_c);
+
+            const run = b.addSystemCommand(&.{ b.graph.zig_exe, "clang", "-c", "-o", "test.o" });
+            run.addFileArg(tmp_path.path(b, "test.c"));
+            run.setCwd(tmp_path);
+            run.has_side_effects = true;
+            run.setName("zig clang ./test.c");
+            run.expectExitCode(0);
+            step.dependOn(&run.step);
+        }
+    }
+
+    // Extend multi-call binary test to cover clang symlink.
+    {
+        const tmp_path = b.tmpPath();
+
+        for (&[_][]const u8{ "clang" }) |cmd| {
+            const create_symlink = b.addSystemCommand(&.{ "/bin/ln", "-s", b.graph.zig_exe, cmd });
+            create_symlink.setCwd(tmp_path);
+            create_symlink.setName(b.fmt("create {s} symlink for multi-call test", .{cmd}));
+            create_symlink.expectExitCode(0);
+
+            const run_via_symlink = b.addSystemCommand(&.{ b.fmt(".{s}{s}", .{ s, cmd }), "--help" });
+            run_via_symlink.setCwd(tmp_path);
+            run_via_symlink.setName(b.fmt("invoke {s} symlink --help", .{cmd}));
+            run_via_symlink.expectExitCode(0);
+            run_via_symlink.step.dependOn(&create_symlink.step);
+
+            step.dependOn(&run_via_symlink.step);
+        }
+    }
+
+    // Test `zig install --tools=clang` end-to-end.
+    {
+        const tmp_path = b.tmpPath();
+
+        {
+            const run = b.addSystemCommand(&.{
+                "/bin/sh", "-c",
+                b.fmt("{s} install --tools=clang --prefix=. && ./bin/clang", .{b.graph.zig_exe}),
+            });
+            run.setCwd(tmp_path);
+            run.setName("installed clang (no input)");
+            run.expectStdErrEqual("clang: no input files\n");
+            run.expectExitCode(1);
+            step.dependOn(&run.step);
+        }
+
+        {
+            const run = b.addSystemCommand(&.{
+                "/bin/sh", "-c",
+                b.fmt("{s} install --tools=clang --prefix=. && ./bin/clang --help", .{b.graph.zig_exe}),
+            });
+            run.setCwd(tmp_path);
+            run.setName("installed clang --help");
+            run.expectStdErrEqual("");
+            run.expectExitCode(0);
+            step.dependOn(&run.step);
+        }
+
+        {
+            const run = b.addSystemCommand(&.{
+                "/bin/sh", "-c",
+                b.fmt("{s} install --tools=clang --prefix=. && ./bin/clang --version", .{b.graph.zig_exe}),
+            });
+            run.setCwd(tmp_path);
+            run.setName("installed clang --version");
+            run.expectStdOutMatch("zig clang version");
+            run.expectStdErrEqual("");
+            run.expectExitCode(0);
+            step.dependOn(&run.step);
+        }
+
+        {
+            const run = b.addSystemCommand(&.{
+                "/bin/sh", "-c",
+                b.fmt(
+                    \\{s} install --tools=clang --prefix=. && printf 'int add(int a, int b) {{ return a + b; }}\n' > test.c && ./bin/clang -c -o test.o test.c
+                ,
+                    .{b.graph.zig_exe},
+                ),
+            });
+            run.setCwd(tmp_path);
+            run.has_side_effects = true;
+            run.setName("installed clang compile");
             run.expectExitCode(0);
             step.dependOn(&run.step);
         }
